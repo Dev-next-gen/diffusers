@@ -292,6 +292,16 @@ class ModuleGroup:
             else:
                 self._process_tensors_from_modules(None)
 
+        # Make the default stream wait for the transfer stream before the forward pass proceeds.
+        # Without this, the first matmul can race ahead of async CPU→GPU copies on platforms
+        # with less strict implicit stream ordering (AMD ROCm gfx1xxx, some CUDA configurations).
+        if self.stream is not None:
+            current_default = self._torch_accelerator_module.current_stream()
+            if hasattr(current_default, "wait_stream"):
+                current_default.wait_stream(self.stream)
+            else:
+                self.stream.synchronize()
+
     def _offload_to_disk(self):
         self._check_disk_offload_torchao()
 
